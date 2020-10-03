@@ -2,6 +2,27 @@ import asyncio
 import aiohttp
 import time
 from .const import Region
+from functools import wraps
+
+
+class RateLimiter():
+    """Limits to {limit} number of connections and {rate} requests/second"""
+
+    def __init__(self, rate, limit):
+        self.sem = asyncio.Semaphore(limit)
+        self.rate = rate
+
+    def __call__(self, fn):
+        @wraps(fn)
+        async def decorated(*args, **kwargs):
+            async with self.sem:
+                start = time.monotonic()
+                result = await fn(*args, **kwargs)
+                diff = time.monotonic() - start
+                sleep_for = max(0, 1/self.rate-diff)
+                await asyncio.sleep(sleep_for)
+                return result
+        return decorated
 
 
 class Sc2Api:
@@ -75,6 +96,7 @@ class RequestHandler:
         if self._session:
             await self._session.close()
 
+    @ RateLimiter(100, 100)
     async def get(self, url):
         if self.token_expires_at < time.time():
             await self.update_token()
