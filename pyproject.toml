@@ -6,9 +6,12 @@ authors = ["Tiago Vilela <tiagovla@gmail.com>"]
 
 [tool.poetry.dependencies]
 python = "^3.8"
+aiohttp = "^3.6.2"
 
 [tool.poetry.dev-dependencies]
 pytest = "^5.2"
+flake8 = "^3.8.3"
+autopep8 = "^1.5.4"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
