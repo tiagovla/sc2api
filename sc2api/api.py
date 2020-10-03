@@ -3,6 +3,7 @@ import aiohttp
 import time
 from .const import Region
 from functools import wraps
+from urllib.parse import quote as _uriquote
 
 
 class RateLimiter():
@@ -32,31 +33,11 @@ class Sc2Api:
         self.client_secret = client_secret
         self._request = RequestHandler(self.client_id, self.client_secret)
 
-    async def get_current_season(self, region, region_id):
-        if isinstance(region_id, Region):
-            region_id = region_id.value
-        url = "https://{}.api.blizzard.com/sc2/ladder/season/{}"
-        url = url.format(region, region_id)
-        return await self._request.get(url)
-
-    async def get_league_data(self, region, season_id, queue_id,
-                              team_type, league_id, locale='en_US'):
-        url = "https://{}.api.blizzard.com/data/sc2/league/{}/{}/{}/{}?locale={}"
-        url = url.format(region, season_id, queue_id,
-                         team_type, league_id, locale)
-        return await self._request.get(url)
-
-    async def get_ladder(self, region, ladder_id):
-        url = "https://{}.api.blizzard.com/data/sc2/ladder/{}"
-        url = url.format(region, ladder_id)
-        return await self._request.get(url)
-
-    # async def get_ladder(self, region, region_id, ladder_id):
-    #     if isinstance(region_id, Region):
-    #         region_id = region_id.value
-    #     url = "https://{}.api.blizzard.com/sc2/legacy/ladder/{}/{}"
-    #     url = url.format(region, region_id, ladder_id)
-    #     return await self._request.get(url)
+        self.profile = ProfileApi(self._request)
+        self.ladder = LadderApi(self._request)
+        self.account = AccountApi(self._request)
+        self.legacy = LegacyApi(self._request)
+        self.data = DataApi(self._request)
 
     async def close(self):
         await self._request.close()
@@ -68,7 +49,128 @@ class Sc2Api:
         await self.close()
 
 
+class DataApi:
+    def __init__(self, request_handler):
+        self._rh = request_handler
+
+    async def league(self, season_id, queue_id, team_type, league_id):
+        route = Route('GET', "/data/sc2/league/{season_id}/{queue_id}/{team_type}/{league_id}",
+                      season_id=season_id, queue_id=queue_id, team_type=team_type, league_id=league_id)
+        return await self._rh.request(route, params={'locale': 'en_US'})
+
+    async def ladder(self, ladder_id):
+        route = Route(
+            'GET', "/data/sc2/ladder/{ladder_id}", ladder_id=ladder_id)
+        return await self._rh.request(route, params={'locale': 'en_US'})
+
+
+class ProfileApi:
+    def __init__(self, request_handler):
+        self._rh = request_handler
+
+    async def static(self, region_id):
+        route = Route(
+            'GET', "/sc2/static/profile/{region_id}", region_id=region_id)
+        return await self._rh.request(route, params={'locale': 'en_US'})
+
+    async def metadata(self, region_id, realm_id, profile_id):
+        route = Route(
+            'GET', "/sc2/metadata/profile/{region_id}/{realm_id}/{profile_id}",
+            region_id=region_id, realm_id=realm_id, profile_id=profile_id)
+        return await self._rh.request(route, params={'locale': 'en_US'})
+
+    async def profile(self, region_id, realm_id, profile_id):
+        route = Route(
+            'GET', "/sc2/profile/{region_id}/{realm_id}/{profile_id}",
+            region_id=region_id, realm_id=realm_id, profile_id=profile_id)
+        return await self._rh.request(route, params={'locale': 'en_US'})
+
+    async def ladder_summary(self, region_id, realm_id, profile_id):
+        route = Route('GET',
+                      "/sc2/profile/{region_id}/{realm_id}/{profile_id}/ladder/summary",
+                      region_id=region_id, realm_id=realm_id,
+                      profile_id=profile_id)
+        return await self._rh.request(route, params={'locale': 'en_US'})
+
+    async def ladder(self, region_id, realm_id, profile_id, ladder_id):
+        route = Route('GET',
+                      "/sc2/profile/{region_id}/{realm_id}/{profile_id}/ladder/{ladder_id}",
+                      region_id=region_id, realm_id=realm_id,
+                      profile_id=profile_id, ladder_id=ladder_id)
+        return await self._rh.request(route, params={'locale': 'en_US'})
+
+
+class LadderApi:
+    def __init__(self, request_handler):
+        self._rh = request_handler
+
+    async def grand_master(self, region_id):
+        route = Route('GET', "/sc2/ladder/grandmaster/{region_id}",
+                      region_id=region_id)
+        return await self._rh.request(route)
+
+    async def season(self, region_id):
+        route = Route('GET', "/sc2/ladder/season/{region_id}",
+                      region_id=region_id)
+        return await self._rh.request(route)
+
+
+class AccountApi:
+    def __init__(self, request_handler):
+        self._rh = request_handler
+
+    async def player(self, account_id):
+        route = Route('GET', "/sc2/player/:accountId",
+                      account_id=account_id)
+        return await self._rh.request(route)
+
+
+class LegacyApi:
+    def __init__(self, request_handler):
+        self._rh = request_handler
+
+    async def profile(self, region_id, realm_id, profile_id):
+        route = Route('GET',
+                      "/sc2/legacy/profile/{region_id}/{realm_id}/{profile_id}",
+                      region_id=region_id, realm_id=realm_id,
+                      profile_id=profile_id)
+        return await self._rh.request(route)
+
+    async def ladders(self, region_id, realm_id, profile_id):
+        route = Route('GET',
+                      "/sc2/legacy/profile/{region_id}/{realm_id}/{profile_id}/ladders",
+                      region_id=region_id, realm_id=realm_id,
+                      profile_id=profile_id)
+        return await self._rh.request(route)
+
+    async def match_history(self, region_id, realm_id, profile_id):
+        route = Route('GET',
+                      "/sc2/legacy/profile/{region_id}/{realm_id}/{profile_id}/matches",
+                      region_id=region_id, realm_id=realm_id,
+                      profile_id=profile_id)
+        return await self._rh.request(route)
+
+    async def ladder(self, region_id, ladder_id):
+        route = Route('GET',
+                      "/sc2/legacy/ladder/{region_id}/{ladder_id}",
+                      region_id=region_id, ladder_id=ladder_id)
+        return await self._rh.request(route)
+
+    async def achievements(self, region_id):
+        route = Route('GET',
+                      "/sc2/legacy/data/achievements/{region_id}",
+                      region_id=region_id)
+        return await self._rh.request(route)
+
+    async def rewards(self, region_id):
+        route = Route('GET',
+                      "/sc2/legacy/data/rewards/{region_id}",
+                      region_id=region_id)
+        return await self._rh.request(route)
+
+
 class RequestHandler:
+
     def __init__(self, client_id, client_secret):
         self.client_id = client_id
         self.client_secret = client_secret
@@ -106,3 +208,33 @@ class RequestHandler:
             result = await resp.json()
             print(resp.url)
         return result
+
+    async def request(self, route, **kwargs):
+        if self.token_expires_at < time.time():
+            await self.update_token()
+        method = route.method
+        url = route.url
+        kwargs['params'] = {'access_token': self.token,
+                            **kwargs.get('params', {})}
+        async with self._session.request(method, url, **kwargs) as r:
+            try:
+                data = await r.json()
+            except aiohttp.client_exceptions.ContentTypeError:
+                data = await r.text()
+            print(r.url)
+        return data
+
+
+class Route:
+    BASE = "https://us.api.blizzard.com"
+
+    def __init__(self, method, path, **params):
+        self.path = path
+        self.method = method
+        url = self.BASE + self.path
+        if params:
+            self.url = url.format(
+                **{k: _uriquote(v) if isinstance(v, str) else v
+                   for k, v in params.items()})
+        else:
+            self.url = url

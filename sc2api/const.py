@@ -1,12 +1,17 @@
 from enum import Enum
 
 
-class TeamType(Enum):
+class BaseEnum(Enum):
+    def __str__(self):
+        return "{0}".format(self.value)
+
+
+class TeamType(BaseEnum):
     ARRANGED = 0
     RANDOM = 1
 
 
-class QueueId(Enum):
+class QueueID(BaseEnum):
     WOL1V1 = 1
     WOL2V2 = 2
     WOL3V3 = 3
@@ -22,14 +27,14 @@ class QueueId(Enum):
     LOTVARCHON = 206
 
 
-class Region(Enum):
+class Region(BaseEnum):
     US = 1
     EU = 2
     KR = 3
     CN = 5
 
 
-class League(Enum):
+class League(BaseEnum):
     BRONZE = 0
     SILVER = 1
     GOLD = 2
@@ -37,3 +42,8 @@ class League(Enum):
     DIAMOND = 4
     MASTER = 5
     GRANDMASTER = 6
+
+
+if __name__ == "__main__":
+    for kappa in League:
+        print(kappa)
