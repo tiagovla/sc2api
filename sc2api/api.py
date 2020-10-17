@@ -31,16 +31,16 @@ class Sc2Api:
     def __init__(self, client_id, client_secret):
         self.client_id = client_id
         self.client_secret = client_secret
-        self._request = RequestHandler(self.client_id, self.client_secret)
+        self._rh = RequestHandler(self.client_id, self.client_secret)
 
-        self.profile = ProfileApi(self._request)
-        self.ladder = LadderApi(self._request)
-        self.account = AccountApi(self._request)
-        self.legacy = LegacyApi(self._request)
-        self.data = DataApi(self._request)
+        self.profile = ProfileApi(self._rh)
+        self.ladder = LadderApi(self._rh)
+        self.account = AccountApi(self._rh)
+        self.legacy = LegacyApi(self._rh)
+        self.data = DataApi(self._rh)
 
     async def close(self):
-        await self._request.close()
+        await self._rh.close()
 
     async def __aenter__(self):
         return self
@@ -53,14 +53,16 @@ class DataApi:
     def __init__(self, request_handler):
         self._rh = request_handler
 
-    async def league(self, season_id, queue_id, team_type, league_id):
+    async def league(self, region, season_id, queue_id, team_type, league_id):
         route = Route('GET', "/data/sc2/league/{season_id}/{queue_id}/{team_type}/{league_id}",
+                      base=f"https://{region.name}.api.blizzard.com",
                       season_id=season_id, queue_id=queue_id, team_type=team_type, league_id=league_id)
         return await self._rh.request(route, params={'locale': 'en_US'})
 
-    async def ladder(self, ladder_id):
+    async def ladder(self, region, ladder_id):
         route = Route(
-            'GET', "/data/sc2/ladder/{ladder_id}", ladder_id=ladder_id)
+            'GET', "/data/sc2/ladder/{ladder_id}",
+            base=f"https://{region.name}.api.blizzard.com", ladder_id=ladder_id)
         return await self._rh.request(route, params={'locale': 'en_US'})
 
 
@@ -192,23 +194,12 @@ class RequestHandler:
 
         self.token = data['access_token']
         self.token_expires_at = time.time() + data['expires_in']*0.95
-        print(self.token)
 
     async def close(self):
         if self._session:
             await self._session.close()
 
     @ RateLimiter(100, 100)
-    async def get(self, url):
-        if self.token_expires_at < time.time():
-            await self.update_token()
-        params = {'access_token': self.token}
-
-        async with self._session.get(url, params=params) as resp:
-            result = await resp.json()
-            print(resp.url)
-        return result
-
     async def request(self, route, **kwargs):
         if self.token_expires_at < time.time():
             await self.update_token()
@@ -221,17 +212,17 @@ class RequestHandler:
                 data = await r.json()
             except aiohttp.client_exceptions.ContentTypeError:
                 data = await r.text()
-            print(r.url)
         return data
 
 
 class Route:
     BASE = "https://us.api.blizzard.com"
 
-    def __init__(self, method, path, **params):
+    def __init__(self, method, path, base=None, **params):
         self.path = path
         self.method = method
-        url = self.BASE + self.path
+        self.base = base or self.BASE
+        url = self.base + self.path
         if params:
             self.url = url.format(
                 **{k: _uriquote(v) if isinstance(v, str) else v
