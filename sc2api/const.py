@@ -31,7 +31,7 @@ class Region(BaseEnum):
     US = 1
     EU = 2
     KR = 3
-    # CN = 5
+    CN = 5
 
 
 class League(BaseEnum):
@@ -42,8 +42,3 @@ class League(BaseEnum):
     DIAMOND = 4
     MASTER = 5
     GRANDMASTER = 6
-
-
-if __name__ == "__main__":
-    for kappa in League:
-        print(kappa)

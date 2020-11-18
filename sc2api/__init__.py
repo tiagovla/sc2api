@@ -1,4 +1,18 @@
 __version__ = '0.1.0'
 
-from .api import Sc2Api, RequestHandler
-from .const import Region, TeamType, QueueID, League
+import logging
+
+from .api import RequestHandler, Sc2Api
+from .const import League, QueueID, Region, TeamType
+from .error import Sc2ApiAuthenticationError
+
+try:
+    from logging import NullHandler
+except ImportError:
+
+    class NullHandler(logging.Handler):
+        def emit(self, record):
+            pass
+
+
+logging.getLogger(__name__).addHandler(NullHandler())
