@@ -11,10 +11,29 @@ from sc2api.error import Sc2ApiAuthenticationError, Sc2ApiError
 logger = logging.getLogger(__name__)
 
 
+class Route:
+    BASE = "https://us.api.blizzard.com"
+
+    def __init__(self, method, path, base=None, **params):
+        self.path = path
+        self.method = method
+        self.base = base or self.BASE
+        url = self.base + self.path
+        if params:
+            self.url = url.format(
+                **{
+                    k: _uriquote(v) if isinstance(v, str) else v
+                    for k, v in params.items()
+                }
+            )
+        else:
+            self.url = url
+
+
 class RateLimiter:
     """Limits to {limit} number of connections and {rate} requests/second"""
 
-    def __init__(self, rate: float, limit: float) -> None:
+    def __init__(self, rate: float, limit: int) -> None:
         self.sem = asyncio.Semaphore(limit)
         self.rate = rate
 
@@ -30,6 +49,56 @@ class RateLimiter:
                 return result
 
         return decorated
+
+
+class RequestHandler:
+    def __init__(self, client_id: str, client_secret: str) -> None:
+        self.client_id = client_id
+        self.client_secret = client_secret
+
+        self._session = None
+        self.token = None
+        self.token_expires_at = 0
+
+    async def update_token(self):
+        """Updates token and token_expires_at"""
+        if self._session is None:
+            self._session = aiohttp.ClientSession()
+        params = {"grant_type": "client_credentials"}
+        auth = aiohttp.BasicAuth(self.client_id, self.client_secret)
+        url = "https://us.battle.net/oauth/token"
+
+        async with self._session.post(url, auth=auth, params=params) as resp:
+            data = await resp.json()
+        try:
+            self.token = data["access_token"]
+        except KeyError:
+            logger.debug("Wrong credentials provided")
+            raise Sc2ApiAuthenticationError("Wrong credentials provided")
+        self.token_expires_at = time.time() + data["expires_in"] * 0.95
+
+    async def close(self):
+        if self._session:
+            await self._session.close()
+
+    @RateLimiter(100, 100)
+    async def request(self, route, **kwargs):
+        if self._session is None:
+            raise Sc2ApiError("Request handler not initialized")
+        if self.token_expires_at < time.time():
+            await self.update_token()
+        method = route.method
+        url = route.url
+        kwargs["params"] = {
+            "access_token": self.token,
+            **kwargs.get("params", {}),
+        }
+        async with self._session.request(method, url, **kwargs) as r:
+            try:
+                data = await r.json()
+            except aiohttp.ContentTypeError:
+                data = await r.text()
+        return data
 
 
 class Sc2Api:
@@ -55,7 +124,7 @@ class Sc2Api:
 
 
 class DataApi:
-    def __init__(self, request_handler):
+    def __init__(self, request_handler: RequestHandler):
         self._rh = request_handler
 
     async def league(self, region, season_id, queue_id, team_type, league_id):
@@ -81,7 +150,7 @@ class DataApi:
 
 
 class ProfileApi:
-    def __init__(self, request_handler):
+    def __init__(self, request_handler: RequestHandler):
         self._rh = request_handler
 
     async def static(self, region_id):
@@ -133,7 +202,7 @@ class ProfileApi:
 
 
 class LadderApi:
-    def __init__(self, request_handler):
+    def __init__(self, request_handler: RequestHandler):
         self._rh = request_handler
 
     async def grand_master(self, region_id):
@@ -150,7 +219,7 @@ class LadderApi:
 
 
 class AccountApi:
-    def __init__(self, request_handler):
+    def __init__(self, request_handler: RequestHandler):
         self._rh = request_handler
 
     async def player(self, account_id):
@@ -159,7 +228,7 @@ class AccountApi:
 
 
 class LegacyApi:
-    def __init__(self, request_handler):
+    def __init__(self, request_handler: RequestHandler):
         self._rh = request_handler
 
     async def profile(self, region_id, realm_id, profile_id):
@@ -214,72 +283,3 @@ class LegacyApi:
             "GET", "/sc2/legacy/data/rewards/{region_id}", region_id=region_id
         )
         return await self._rh.request(route)
-
-
-class RequestHandler:
-    def __init__(self, client_id: str, client_secret: str) -> None:
-        self.client_id = client_id
-        self.client_secret = client_secret
-
-        self._session = None
-        self.token = None
-        self.token_expires_at = 0
-
-    async def update_token(self):
-        """Updates token and token_expires_at"""
-        if self._session is None:
-            self._session = aiohttp.ClientSession()
-        params = {"grant_type": "client_credentials"}
-        auth = aiohttp.BasicAuth(self.client_id, self.client_secret)
-        url = "https://us.battle.net/oauth/token"
-
-        async with self._session.post(url, auth=auth, params=params) as resp:
-            data = await resp.json()
-        try:
-            self.token = data["access_token"]
-        except KeyError:
-            logger.debug("Wrong credentials provided")
-            raise Sc2ApiAuthenticationError("Wrong credentials provided")
-        self.token_expires_at = time.time() + data["expires_in"] * 0.95
-
-    async def close(self):
-        if self._session:
-            await self._session.close()
-
-    @RateLimiter(100, 100)
-    async def request(self, route, **kwargs):
-        if self._session is None:
-            raise Sc2ApiError("Request handler not initialized")
-        if self.token_expires_at < time.time():
-            await self.update_token()
-        method = route.method
-        url = route.url
-        kwargs["params"] = {
-            "access_token": self.token,
-            **kwargs.get("params", {}),
-        }
-        async with self._session.request(method, url, **kwargs) as r:
-            try:
-                data = await r.json()
-            except aiohttp.ContentTypeError:
-                data = await r.text()
-        return data
-
-
-class Route:
-    BASE = "https://us.api.blizzard.com"
-
-    def __init__(self, method, path, base=None, **params):
-        self.path = path
-        self.method = method
-        self.base = base or self.BASE
-        url = self.base + self.path
-        if params:
-            self.url = url.format(
-                **{
-                    k: _uriquote(v) if isinstance(v, str) else v
-                    for k, v in params.items()
-                }
-            )
-        else:
-            self.url = url
