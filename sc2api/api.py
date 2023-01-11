@@ -218,7 +218,7 @@ class RequestHandler:
         auth = aiohttp.BasicAuth(self.client_id, self.client_secret)
         url = "https://us.battle.net/oauth/token"
 
-        async with self._session.get(url, auth=auth, params=params) as resp:
+        async with self._session.post(url, auth=auth, params=params) as resp:
             data = await resp.json()
         try:
             self.token = data['access_token']
